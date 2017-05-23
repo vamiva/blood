@@ -1,0 +1,183 @@
+<?php
+/**
+ * LINE BOT API Helper For Wordpress
+ * @link https://developers.line.me/bot-api/api-reference
+ * @author ki6ool
+ */
+class LB_CONSTANT {
+ 
+    const END_POINT  = 'https://trialbot-api.line.me';
+    const TO_CHANNEL = '1383378250';
+ 
+    /* EVENT TYPE */
+    const ET_SEND_MESSAGES          = '138311608800106203';
+    const ET_SEND_MULTIPLE_MESSAGES = '140177271400161403';
+    const ET_RECEIVING_MESSAGES     = '138311609000106303';
+    const ET_RECEIVING_OPERATIONS   = '138311609100106403';
+ 
+    /* CONTENT_TYPE */
+    const CT_TEXT     = '1';
+    const CT_IMAGE    = '2';
+    const CT_VIDEO    = '3';
+    const CT_AUDIO    = '4';
+    const CT_LOCATION = '7';
+    const CT_STICKER  = '8';
+    const CT_CONTACT  = '10';
+ 
+    /* TO_TYPE */
+    const TT_USER = '1';
+ 
+    /* OP_TYPE */
+    const OT_ADD   = '4';
+    const OT_BLOCK = '8';
+ 
+}
+ 
+class LINE_BOT {
+    private $channel_id;
+    private $channel_secret;
+    private $mid;
+ 
+    function __construct($channel_id, $channel_secret, $mid) {
+        $this->channel_id = $channel_id;
+        $this->channel_secret = $channel_secret;
+        $this->mid = $mid;
+    }
+ 
+    function receive() {
+        $json  = file_get_contents('php://input');
+        if ( empty($json) ) return false;
+        $data = json_decode($json, true);
+        return $data['result'][0];
+    }
+ 
+    function receivingEventType($result) {
+        return $result['eventType'];
+    }
+ 
+    function post($path, $data) {
+        $curl = curl_init(LB_CONSTANT::END_POINT. $path);
+        curl_setopt($curl, CURLOPT_POST, true);
+        curl_setopt($curl, CURLOPT_CUSTOMREQUEST, 'POST');
+        curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($curl, CURLOPT_POSTFIELDS, json_encode($data));
+        curl_setopt($curl, CURLOPT_HTTPHEADER, [
+            "Content-Type: application/json; charset=UTF-8",
+            "X-Line-ChannelID: {$this->channel_id}",
+            "X-Line-ChannelSecret: {$this->channel_secret}",
+            "X-Line-Trusted-User-With-ACL: {$this->mid}"
+        ]);
+        $output = curl_exec($curl);
+        curl_close($curl);
+        //error_log($output);
+    }
+ 
+    function sendMessages($to, $content) {
+        $data = [];
+        $data['to'] = is_array($to) ? $to : [$to];
+        $data['toChannel'] = LB_CONSTANT::TO_CHANNEL;
+        $data['eventType'] = LB_CONSTANT::ET_SEND_MESSAGES;
+        $data['content'] = $content;
+        return $this->post('/v1/events', $data);
+    }
+ 
+    function sendText($mid, $text) {
+        $content = [
+                'toType' => LB_CONSTANT::TT_USER,
+                'contentType' => LB_CONSTANT::CT_TEXT,
+                'text' => $text,
+        ];
+        return $this->sendMessages($mid, $content);
+    }
+ 
+    function sendImage($mid, $url) {
+        $content = [
+                'toType' => LB_CONSTANT::TT_USER,
+                'contentType' => LB_CONSTANT::CT_IMAGE,
+                'originalContentUrl' => $url,
+                'previewImageUrl' => $url
+        ];
+        return $this->sendMessages($mid, $content);
+    }
+ 
+    function sendVideo($mid, $url, $image_url) {
+        $content = [
+                'toType' => LB_CONSTANT::TT_USER,
+                'contentType' => LB_CONSTANT::CT_VIDEO,
+                'originalContentUrl' => $url,
+                'previewImageUrl' => $image_url
+        ];
+        return $this->sendMessages($mid, $content);
+    }
+ 
+    function sendAudio($mid, $url, $length) {
+        $content = [
+                'toType' => LB_CONSTANT::TT_USER,
+                'contentType' => LB_CONSTANT::CT_AUDIO,
+                'originalContentUrl' => $url,
+                'contentMetadata.AUDLEN' => $length
+        ];
+        return $this->sendMessages($mid, $content);
+    }
+ 
+    function sendLocation($mid, $text, $location) {
+        $content = [
+                'toType' => LB_CONSTANT::TT_USER,
+                'contentType' => LB_CONSTANT::CT_LOCATION,
+                'text' => $text,
+                'location' => $location
+        ];
+        return $this->sendMessages($mid, $content);
+    }
+ 
+    function sendSticker($mid, $sticker) {
+        $content = [
+                'toType' => LB_CONSTANT::TT_USER,
+                'contentType' => LB_CONSTANT::CT_STICKER,
+                'contentMetadata' => $sticker
+        ];
+        return $this->sendMessages($mid, $content);
+    }
+ 
+    function sendMultipleMessages($to, $messages) {
+        $data = [];
+        $data['to'] = is_array($to) ? $to : [$to];
+        $data['toChannel'] = LB_CONSTANT::TO_CHANNEL;
+        $data['eventType'] = LB_CONSTANT::ET_SEND_MULTIPLE_MESSAGES;
+        $data['content'] = [
+                'messageNotified' => 0,
+                'messages' => $messages,
+        ];
+        return $this->post('/v1/events', $data);
+    }
+ 
+    function get($path, $data) {
+        $curl = curl_init(LB_CONSTANT::END_POINT. $path. '?'. http_build_query($data));
+        curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($curl, CURLOPT_HTTPHEADER, [
+                'X-Line-ChannelID: '. $this->channel_id,
+                'X-Line-ChannelSecret: '. $this->channel_secret,
+                'X-Line-Trusted-User-With-ACL: '. $this->mid,
+        ]);
+        $output = curl_exec($curl);
+        curl_close($curl);
+        return $output;
+    }
+ 
+    function getProfiles($mid, $field=null) {
+        $param = ['mids' => $mid];
+        $json = $this->get('/v1/profiles', $param);
+        $data = json_decode($json, true);
+        return  empty($field) ? $data['contacts'][0] : $data['contacts'][0][$field];
+    }
+ 
+    function getFriends() {
+    }
+ 
+    function addFriend($mid) {
+    }
+ 
+    function removeFriend($mid) {
+    }
+ 
+}
